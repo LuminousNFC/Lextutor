@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exemple de Formatage Juridique</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #444;
+            margin-top: 30px;
+        }
+        /* Styles pour les Articles de Loi */
+        .article-title {
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        .article-content {
+            margin-left: 20px;
+        }
+        .article-content p {
+            margin-bottom: 10px;
+        }
+        .footnote {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 20px;
+            border-top: 1px solid #ddd;
+            padding-top: 10px;
+        }
+        .footnote-link {
+            cursor: pointer;
+            color: blue;
+            text-decoration: underline;
+        }
+        /* Styles pour la Jurisprudence */
+        .jurisprudence {
+            margin-top: 30px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            background-color: #f9f9f9;
+        }
+        .jurisprudence-title {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        .jurisprudence-icon {
+            width: 20px;
+            height: 20px;
+            background-color: red;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        .regeste {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .highlight {
+            background-color: yellow;
+        }
+        .jurisprudence-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 5px 10px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 3px;
+        }
+        .jurisprudence-pagination {
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Exemple de Formatage Juridique</h1>
+
+        <h2>1. Article de Loi</h2>
+        <div class="article">
+            <div class="article-title">Art. 43a<sup>50</sup></div>
+            <div class="article-content">
+                <p>1 Le Conseil fédéral assure la coordination et la planification de ses activités et celles de l'administration fédérale. Il fixe les objectifs et les moyens de son action. Il ordonne les priorités et affecte les ressources en conséquence.</p>
+                <p>2 Il décide de l'organisation de l'administration fédérale dans le cadre de la loi.</p>
+                <p>3 Il veille à ce que l'administration fédérale agisse conformément au droit, de manière efficace et rentable; il s'assure qu'elle réponde aux besoins de la population et de l'économie.</p>
+            </div>
+            <div class="footnote">
+                <span class="footnote-link" onclick="alert('Détails de la note de bas de page')">50</span> Accepté en votation populaire du 9 fév. 2014, en vigueur depuis le 1er janv. 2016 (AF du 27 sept. 2013, ACF du 13 mai 2015; RO 2015 1583; FF 2011 6171, 2012 3205, 2013 6575, 2015 3397).
+            </div>
+        </div>
+
+        <h2>2. Jurisprudence</h2>
+        <div class="jurisprudence">
+            <div class="jurisprudence-title">
+                <span class="jurisprudence-icon"></span>
+                Tribunal fédéral (ATF) 138 III 570 (5A_423/2011)
+            </div>
+            <p class="regeste">Regeste:</p>
+            <p>
+                Art. 59 al. 2 let. e CPC; <span class="highlight">litispendance</span> internationale. La litispendance internationale peut être invoquée en Suisse même si la décision étrangère n'est pas susceptible d'être reconnue en Suisse (consid. 3 et 4).
+            </p>
+            <a href="#" class="jurisprudence-link">Voir le texte intégral</a>
+            <div class="jurisprudence-pagination">
+                Résultat 1 de 2324
+            </div>
+        </div>
+    </div>
+</body>
+</html>

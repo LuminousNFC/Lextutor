@@ -1,2 +1,3 @@
-# Lextutor
-PoC MasterLaw
+# PoC MasterLaw
+
+Ce projet utilise FastAPI pour l'analyse juridique.
