@@ -1,17 +1,14 @@
-from pydantic import BaseSettings, BaseModel, HttpUrl
+from pydantic import BaseSettings, BaseModel
 from typing import Dict, Optional, Any
 import requests
 import logging
-from bs4 import BeautifulSoup
-from requests.exceptions import RequestException, Timeout
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 # Configuration du logger
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class FedlexLink(BaseModel):
-    lien: HttpUrl
+    lien: str
     titre: str
 
 class Settings(BaseSettings):
@@ -394,30 +391,29 @@ class Settings(BaseSettings):
         "titre": "Loi fédérale sur les fonds de placement"
     }
 }
-request_timeout: int = 30  # secondes
-    max_retries: int = 3
-    retry_delay: int = 5  # secondes
 
-    # Configuration des scrapers
-    playwright_timeout: int = 60000  # millisecondes
-    selenium_timeout: int = 30  # secondes
-    selenium_max_retries: int = 3
-    selenium_retry_delay: int = 5  # secondes
 
+    # Fonction pour obtenir le lien Fedlex pour un code de loi donné
     def get_fedlex_link(self, law_code: str, article_number: str = "") -> str:
         law = self.fedlex_links.get(law_code)
         if law:
-            return f"{law.lien}#art_{article_number}" if article_number else str(law.lien)
+            return f"{law.lien}#art_{article_number}" if article_number else law.lien
         return "Code de loi non trouvé"
+
+    # Configuration des scrapers Playwright et Selenium
+    playwright_timeout: int = 60000  # Timeout en millisecondes
+    selenium_timeout: int = 30  # Timeout en secondes
+    selenium_max_retries: int = 3
+    selenium_retry_delay: int = 5  # Délai entre les tentatives en secondes
 
     class Config:
         env_file = ".env"
         env_file_encoding = 'utf-8'
 
+
 # Instanciation des paramètres de configuration
 settings = Settings()
 
-@retry(stop=stop_after_attempt(settings.max_retries), wait=wait_exponential(multiplier=1, min=settings.retry_delay, max=60))
 def get_article_content(lawCode: str, articleNumber: str) -> Optional[Dict[str, Any]]:
     """
     Fonction pour récupérer le contenu d'un article basé sur le code de loi et le numéro d'article.
@@ -430,44 +426,35 @@ def get_article_content(lawCode: str, articleNumber: str) -> Optional[Dict[str, 
         Optional[Dict[str, Any]]: Dictionnaire contenant le titre et le contenu de l'article, ou None si non trouvé.
     """
     try:
+        # Construire l'URL de l'article
         url = settings.get_fedlex_link(lawCode, articleNumber)
-        response = requests.get(url, timeout=settings.request_timeout)
-        response.raise_for_status()
-
-        soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Adapter ces sélecteurs en fonction de la structure réelle de la page Fedlex
-        title_element = soup.find('h3', class_='article-title')
-        content_element = soup.find('div', class_='article-content')
+        # Faire une requête GET pour récupérer le contenu de l'article
+        response = requests.get(url)
+        response.raise_for_status()  # Lever une exception pour les erreurs HTTP
 
-        if title_element and content_element:
-            return {
-                "title": title_element.text.strip(),
-                "content": content_element.text.strip(),
-                "law_code": lawCode,
-                "article_number": articleNumber
-            }
-        else:
-            logger.warning(f"Contenu de l'article non trouvé pour {lawCode} {articleNumber}")
-            return None
+        # Traiter la réponse (exemple simplifié, adapter selon le format réel)
+        # Il faudra probablement utiliser BeautifulSoup ou lxml pour analyser le HTML
+        # Ici on simule simplement une extraction
+        data = response.json()  # Supposons que la réponse soit au format JSON
+        title = data.get("title")
+        content = data.get("content")
 
-    except Timeout:
-        logger.error(f"Timeout lors de la récupération de l'article {lawCode} {articleNumber}")
-        raise
-    except RequestException as e:
-        logger.error(f"Erreur lors de la récupération de l'article {lawCode} {articleNumber}: {str(e)}")
-        raise
-    except Exception as e:
-        logger.error(f"Erreur inattendue lors de la récupération de l'article {lawCode} {articleNumber}: {str(e)}")
-        raise
+        return {"title": title, "content": content}
 
+    except requests.RequestException as e:
+        logger.error(f"Erreur lors de la récupération de l'article: {str(e)}")
+        return None
+
+    except ValueError:
+        logger.error("Erreur de format de données reçues")
+        return None
+
+# Exemple d'utilisation
 if __name__ == "__main__":
-    try:
-        article = get_article_content("CO", "266g")
-        if article:
-            print(f"Titre: {article['title']}")
-            print(f"Contenu: {article['content']}")
-        else:
-            print("Article non trouvé.")
-    except Exception as e:
-        logger.error(f"Erreur lors de l'exécution du script: {str(e)}")
+    article = get_article_content("CO", "266g")
+    if article:
+        print(f"Titre: {article['title']}")
+        print(f"Contenu: {article['content']}")
+    else:
+        print("Article non trouvé.")

@@ -5,9 +5,7 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 import asyncio
-import subprocess
 import traceback
-from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any, Optional, Union
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconnect, Depends
@@ -23,6 +21,10 @@ import uvicorn
 from functools import lru_cache
 from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+# Import functionality directly instead of using subprocess
+from beta_entscheidsuche_extractor import main as beta_entscheidsuche_main
+from fedlex_extractor import extract_fedlex_article as fedlex_extract_article
 
 # Configuration initiale
 load_dotenv()
@@ -55,7 +57,7 @@ if not API_KEY:
     logger.error("OPENAI_API_KEY n'est pas défini dans le fichier .env")
     sys.exit(1)
 
-# Initialisation du client OpenAI
+# Initialisation du client OpenAI avec GPT-4o
 client = AsyncOpenAI(api_key=API_KEY)
 
 # Variables globales
@@ -79,10 +81,6 @@ Structure de la réponse :
 
 **Remarque :** Limitez vos réponses aux éléments directement pertinents à la question. Évitez toute information superflue ou hors sujet.
 """
-
-# Chemins d'accès aux extracteurs
-beta_entscheidsuche_extractor_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'beta_entscheidsuche_extractor.py'))
-fedlex_extractor_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'fedlex_extractor.py'))
 
 # Initialisation de l'application FastAPI
 app = FastAPI()
@@ -130,9 +128,18 @@ def normalize_law_code(code: str) -> Optional[str]:
             return value
     return code if code in FEDLEX_LINKS else None
 
+# Caches for optimization
+gpt4_cache = {}
+article_cache = {}
+jurisprudence_cache = {}
+
 # Fonctions principales
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 async def analyser_contenu_gpt4(question: str) -> Dict[str, Any]:
+    cache_key = question.strip().lower()
+    if cache_key in gpt4_cache:
+        return gpt4_cache[cache_key]
+
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": question}
@@ -148,12 +155,14 @@ async def analyser_contenu_gpt4(question: str) -> Dict[str, Any]:
         logger.info("Réponse reçue de OpenAI")
         
         if response.choices and len(response.choices) > 0 and response.choices[0].message:
-            return {"assistantResponse": response.choices[0].message.content}
+            result = {"assistantResponse": response.choices[0].message.content}
+            gpt4_cache[cache_key] = result
+            return result
         else:
             logger.error("La structure de la réponse de l'API est inattendue")
             return {"error": "Structure de réponse inattendue de l'API"}
     except Exception as e:
-        logger.error(f"Une erreur s'est produite lors de l'analyse GPT-4 : {e}")
+        logger.error(f"Une erreur s'est produite lors de l'analyse GPT-4o : {e}")
         logger.error(traceback.format_exc())
         return {"error": str(e)}
 
@@ -167,34 +176,26 @@ def parse_gpt4_response(response: str) -> Dict[str, Any]:
             result["Articles de Loi"] = parse_articles(section)
         elif "Résumé :" in section:
             result["Résumé"] = section.split(":", 1)[1].strip()
-        elif "Principe jurisprudentiel / Arrêt de référence :" in section:
-            result["Principe jurisprudentiel"] = [line.strip("- ") for line in section.split("\n")[1:] if line.strip()]
-        elif "Controverse ou évolution" in section:
-            result["Controverse ou évolution"] = section.split(":", 1)[1].strip()
     return result
 
 def parse_articles(section: str) -> List[Dict[str, str]]:
     articles = []
     for line in section.split('\n')[1:]:
-        match = re.match(r'\s*-\s*(?:art\.|article)\s*(\d+[a-z]?(?:-\d+[a-z]?)?)\s*(?:al\.\s*\d+)?\s*(?:du|de la)?\s*([^:]+):\s*(.+)', line.strip(), re.IGNORECASE)
+        match = re.match(r'\s*-\s*\*\*(?:art\.|article)\s*(\d+[a-z]?(?:-\d+[a-z]?)?)\s*([^*]+)\*\*\s*:\s*(.+)', line.strip(), re.IGNORECASE)
         if match:
-            article_number, law_name, description = match.groups()
-            law_code = re.search(r'\(([^)]+)\)', law_name)
-            law_code = law_code.group(1) if law_code else normalize_law_code(law_name.split()[0])
+            article_number, law_code, description = match.groups()
+            law_code = normalize_law_code(law_code.strip())
             if law_code:
                 articles.append({
-                    "article_number": article_number.replace(' ', ''),
+                    "article_number": article_number.strip(),
                     "law_code": law_code,
-                    "law_name": law_name.strip(),
                     "description": description.strip()
                 })
             else:
-                articles.append({"error": f"Code de loi non reconnu: {law_name}"})
+                articles.append({"error": f"Code de loi non reconnu: {law_code}"})
         else:
             articles.append({"error": f"Format d'article non reconnu: {line.strip()}"})
     return articles
-
-article_cache = {}
 
 async def extract_fedlex_article(law_code: str, article_number: str) -> Dict[str, Union[bool, List[Dict[str, str]]]]:
     cache_key = f"{law_code}-{article_number}"
@@ -213,7 +214,8 @@ async def extract_fedlex_article(law_code: str, article_number: str) -> Dict[str
             number_str = str(number).replace('art.', '').strip()
             logger.info(f"Extraction de l'article {normalized_law_code} {number_str}")
 
-            result = await run_fedlex_extractor(normalized_law_code, number_str)
+            # Use asyncio.to_thread to run the synchronous function in a separate thread
+            result = await asyncio.to_thread(fedlex_extract_article, normalized_law_code, number_str)
             
             if result.get("success"):
                 articles_extracted.append(result)
@@ -227,73 +229,57 @@ async def extract_fedlex_article(law_code: str, article_number: str) -> Dict[str
         logger.error(traceback.format_exc())
         return {"success": False, "error": f"Erreur lors de l'extraction: {str(e)}"}
 
-async def run_fedlex_extractor(law_code: str, article_number: str) -> Dict[str, Any]:
-    loop = asyncio.get_running_loop()
-    with ThreadPoolExecutor() as pool:
-        result = await loop.run_in_executor(
-            pool, 
-            lambda: subprocess.run(
-                [sys.executable, fedlex_extractor_path, law_code, article_number],
-                capture_output=True,
-                text=True,
-                env=os.environ.copy()
-            )
-        )
-    
-    if result.returncode == 0 and result.stdout.strip():
-        return json.loads(result.stdout)
-    else:
-        return {"success": False, "error": result.stderr or "Erreur inconnue lors de l'extraction"}
-
 async def extract_jurisprudence(keywords: List[str]) -> List[Dict[str, Any]]:
-    tasks = [fetch_jurisprudence(keyword) for keyword in keywords]
+    tasks = [asyncio.create_task(fetch_jurisprudence(keyword)) for keyword in keywords]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     jurisprudence_results = []
     for result in results:
         if isinstance(result, Exception):
             logger.error(f"Erreur lors de l'extraction de la jurisprudence : {str(result)}")
-        elif result:
+        elif isinstance(result, list):
             jurisprudence_results.extend(result)
     return jurisprudence_results
 
 async def fetch_jurisprudence(keyword: str) -> List[Dict[str, Any]]:
+    if keyword in jurisprudence_cache:
+        return jurisprudence_cache[keyword]
+
     try:
         logger.info(f"Extraction pour le mot-clé: {keyword}")
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: subprocess.run(
-                [sys.executable, beta_entscheidsuche_extractor_path, keyword],
-                capture_output=True,
-                text=True,
-                env=os.environ.copy()
-            )
-        )
+        # Use asyncio.to_thread to run the synchronous function in a separate thread
+        result = await asyncio.to_thread(beta_entscheidsuche_main, keyword)
         
-        if result.returncode == 0 and result.stdout.strip():
-            return json.loads(result.stdout)
+        if result:
+            jurisprudence_cache[keyword] = result
+            return result
         else:
-            logger.error(f"Erreur lors de l'extraction de la jurisprudence pour {keyword}: {result.stderr}")
+            logger.error(f"Aucun résultat trouvé pour le mot-clé: {keyword}")
             return []
     except Exception as e:
         logger.error(f"Erreur inattendue lors de l'extraction de la jurisprudence pour {keyword}: {str(e)}")
         logger.error(traceback.format_exc())
         return []
 
-async def process_question(question: str, keywords: List[str]) -> Dict[str, Any]:
+async def process_question(question: str, keywords: List[str], websocket: Optional[WebSocket] = None) -> Dict[str, Any]:
     try:
         logger.info(f"Traitement de la question : {question}")
 
         analysis_result = await analyser_contenu_gpt4(question)
+        if websocket:
+            await websocket.send_json({"type": "progress", "data": "Analyse GPT-4o terminée"})
 
         if "error" in analysis_result:
             return {"error": analysis_result["error"]}
 
         if not analysis_result or "assistantResponse" not in analysis_result:
-            return {"error": "Erreur lors de l'analyse GPT-4"}
+            return {"error": "Erreur lors de l'analyse GPT-4o"}
 
         parsed_result = parse_gpt4_response(analysis_result["assistantResponse"])
         logger.info(f"Résultat parsé: {pformat(parsed_result)}")
+        if websocket:
+            await websocket.send_json({"type": "progress", "data": "Analyse de la réponse terminée"})
+            await websocket.send_json({"type": "assistantResponse", "data": analysis_result["assistantResponse"]})
+            await websocket.send_json({"type": "analysis", "data": parsed_result})
 
         articles_to_extract = [(article['law_code'], article['article_number']) for article in parsed_result.get('Articles de Loi', []) if 'error' not in article]
         articles_tasks = [extract_fedlex_article(law_code, article_number) for law_code, article_number in articles_to_extract]
@@ -303,14 +289,24 @@ async def process_question(question: str, keywords: List[str]) -> Dict[str, Any]
         for article in articles:
             if not isinstance(article, Exception) and 'articles' in article:
                 for art in article['articles']:
-                    formatted_articles.append({
+                    formatted_article = {
                         "law_code": art.get("law_code"),
                         "article_number": art.get("article_number"),
                         "title": art.get("title", "Sans titre"),
                         "content": art.get("content", "Contenu non disponible")
-                    })
+                    }
+                    formatted_articles.append(formatted_article)
+                    if websocket:
+                        await websocket.send_json({"type": "article", "data": formatted_article})
+
+        if websocket:
+            await websocket.send_json({"type": "progress", "data": "Extraction des articles terminée"})
 
         jurisprudence = await extract_jurisprudence(keywords)
+        if websocket:
+            for jurisprudence_item in jurisprudence:
+                await websocket.send_json({"type": "jurisprudence", "data": jurisprudence_item})
+            await websocket.send_json({"type": "progress", "data": "Extraction de la jurisprudence terminée"})
 
         result = {
             "assistantResponse": analysis_result["assistantResponse"],
@@ -319,11 +315,17 @@ async def process_question(question: str, keywords: List[str]) -> Dict[str, Any]
             "jurisprudence": jurisprudence
         }
 
+        if websocket:
+            await websocket.send_json({"type": "complete", "data": "Traitement terminé"})
+
         return result
     except Exception as e:
         logger.error(f"Erreur inattendue lors du traitement de la question : {str(e)}")
         logger.error(traceback.format_exc())
-        return {"error": f"Erreur interne du serveur: {str(e)}"}
+        error_message = f"Erreur interne du serveur: {str(e)}"
+        if websocket:
+            await websocket.send_json({"type": "error", "data": error_message})
+        return {"error": error_message}
 
 # Routes FastAPI
 @app.post("/api/process")
@@ -428,19 +430,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
 
             try:
-                result = await process_question(question, keywords)
-                
-                # Envoyer la réponse de l'assistant
+                result = await process_question(question, keywords, websocket=websocket)
                 await websocket.send_json({"type": "assistantResponse", "data": result["assistantResponse"]})
-                
-                # Envoyer l'analyse
                 await websocket.send_json({"type": "analysis", "data": result["analysis"]})
                 
-                # Envoyer les articles
-                for article in result["articles"]:
-                    await websocket.send_json({"type": "article", "data": article})
-                
-                # Envoyer la jurisprudence
                 for jurisprudence in result["jurisprudence"]:
                     await websocket.send_json({"type": "jurisprudence", "data": jurisprudence})
                 
@@ -459,158 +452,4 @@ async def websocket_endpoint(websocket: WebSocket):
 # Point d'entrée principal
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
