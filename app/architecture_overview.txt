@@ -1,0 +1,6 @@
+Lextutor Project Architecture
+1. Models: Define data structures and database interactions.
+2. Routes: Handle API endpoints and request routing.
+3. Services: Business logic and data processing.
+4. Static: Serve static files (CSS, JS, images).
+5. Templates: HTML templates for rendering views.
