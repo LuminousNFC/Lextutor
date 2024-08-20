@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PoC MasterLaw Enhanced V1108 - Analyse juridique</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="preload" href="/static/styles.css" as="style">
+    <link rel="preload" href="/static/script.js" as="script">
+    <script defer type="module" src="/static/script.js"></script>
+</head>
+<body>
+    <div id="chat-container">
+        <h1 class="text-center mb-4">PoC MasterLaw Enhanced V1108 - Analyse juridique</h1>
+        
+        <div id="messages" aria-live="polite" role="log"></div>
+        
+        <!-- Formulaire avec ajout des champs pour les mots-clés -->
+        <form id="message-form">
+            <label for="user-input" class="sr-only">Question juridique</label>
+            <input type="text" id="user-input" placeholder="Posez votre question juridique ici..." required aria-label="Entrer votre question juridique">
+            
+            <!-- Nouveaux champs pour les mots-clés -->
+            <div id="keywords-container" style="margin-top: 10px;">
+                <label for="keyword-1" class="sr-only">Mot-clé 1</label>
+                <input type="text" id="keyword-1" placeholder="Mot-clé 1" aria-label="Entrer le premier mot-clé">
+                
+                <label for="keyword-2" class="sr-only">Mot-clé 2</label>
+                <input type="text" id="keyword-2" placeholder="Mot-clé 2" aria-label="Entrer le deuxième mot-clé">
+                
+                <label for="keyword-3" class="sr-only">Mot-clé 3</label>
+                <input type="text" id="keyword-3" placeholder="Mot-clé 3" aria-label="Entrer le troisième mot-clé">
+            </div>
+
+            <button type="submit">Envoyer</button>
+        </form>
+        
+        <div class="button-container">
+            <button id="clear-button">Effacer la conversation</button>
+        </div>
+        
+        <div id="status-window" aria-live="polite" role="status">
+            <h2>Statut des opérations</h2>
+            <div id="status-text">En attente d'une question...</div>
+            <div id="timer">Temps écoulé: 0 secondes</div>
+        </div>
+        
+        <div id="error-message" aria-live="assertive" role="alert"></div>
+        
+        <div id="search-results">
+            <h2>Résultats de recherche</h2>
+            <div id="search-results-content"></div>
+        </div>
+        
+        <div id="articles-list">
+            <h2>Articles mentionnés</h2>
+            <div id="articles-content"></div>
+        </div>
+        
+        <div id="article-fetcher">
+            <h2>Récupération d'un article de loi</h2>
+            <form id="article-fetch-form">
+                <label for="law-select">Sélectionnez une loi</label>
+                <select id="law-select" required>
+                    <option value="">Sélectionnez une loi</option>
+                    <!-- Options de loi ajoutées dynamiquement par script.js -->
+                </select>
+                
+                <label for="article-number">Numéro d'article</label>
+                <input type="text" id="article-number" placeholder="Ex: 1234" required aria-label="Entrer le numéro de l'article">
+                
+                <button type="submit" id="fetch-article-button">Récupérer l'article</button>
+            </form>
+            <div id="article-result" class="mt-3" aria-live="polite"></div>
+        </div>
+        
+        <div id="debug-info" style="display: none;"></div>
+    </div>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

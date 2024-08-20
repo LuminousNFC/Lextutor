@@ -1,0 +1,19 @@
+# Environnement virtuel
+env/
+venv/
+*.pyc
+__pycache__/
+
+# Fichiers de cache
+app/cache/
+
+# Fichiers de log
+*.log
+
+# Fichier .env contenant des informations sensibles
+.env
+
+# Autres fichiers et dossiers à ignorer
+*.pyc
+__pycache__/
+.DS_Store
